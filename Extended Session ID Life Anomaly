@@ -1,0 +1,17 @@
+let threshold = 90d; 
+CloudAppEvents 
+| where AccountType == "Regular" 
+| extend RawData = parse_json(RawEventData) 
+| extend AADSessionID = RawData.AppAccessContext.AADSessionId 
+| summarize  
+    FirstSeen = min(TimeGenerated),  
+    LastSeen = max(TimeGenerated), 
+    Users = make_set(AccountDisplayName) 
+    by tostring(AADSessionID) 
+| where LastSeen - FirstSeen >= threshold 
+| project 
+    AADSessionID, 
+    Users, 
+    FirstSeen, 
+    LastSeen, 
+    ActiveTime = LastSeen - FirstSeen 
