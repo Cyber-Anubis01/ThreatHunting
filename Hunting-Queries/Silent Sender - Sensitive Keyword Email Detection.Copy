@@ -1,0 +1,36 @@
+Description: 
+Detects new email senders delivering messages with sensitive financial or urgent keywords, potentially indicating phishing, social engineering, or business email compromise attempts. The query identifies first-time communications containing high-risk terminology, flagging potential security threats that bypass traditional email filters. 
+
+
+KQL Query: 
+
+// Define a list of keywords potentially associated with financial, urgent, or sensitive communications 
+let KeyWords = dynamic([ 
+    'ACH', 'Invoice', 'Remittance', 'Action', 'Immediate',  
+    'Help', 'Shared', 'PDF', 'Call', 'Payment',  
+    'Urgent', 'Support', 'Document', 'Attachment' 
+]); 
+// Retrieve recent inbound emails matching specific sensitive keywords 
+let RecentEmails = EmailEvents 
+    | where TimeGenerated >= ago(1day)  // Limit to last 24 hours for real-time threat detection 
+    | where EmailDirection =~ 'Inbound'  // Focus on incoming emails 
+    | where Subject has_any (KeyWords)  // Filter emails with potential sensitive subjects 
+    | where DeliveryAction =~ 'Delivered';  // Ensure email was successfully delivered 
+// Analyze historical communication patterns to identify new or unusual sender interactions 
+let PastCommunication = EmailEvents 
+    | where TimeGenerated >= ago(14day)  // Look back 14 days for communication history 
+    | summarize  
+        EmailCount = count()  // Count total emails between specific sender-recipient pair 
+    by SenderFromAddress, RecipientEmailAddress; 
+// Main analysis: Identify new sender communications with sensitive subject lines 
+RecentEmails 
+| join kind=leftouter (PastCommunication)  // Left outer join to include all recent emails 
+    on SenderFromAddress, RecipientEmailAddress 
+| extend CommunicationStatus = iff(isnull(EmailCount), 'New Sender', 'Established Communication') 
+| where CommunicationStatus == 'New Sender'  // Focus on new sender interactions 
+| project  
+    TimeGenerated,  
+    SenderFromAddress,  
+    RecipientEmailAddress,  
+    Subject,  
+    CommunicationStatus 
